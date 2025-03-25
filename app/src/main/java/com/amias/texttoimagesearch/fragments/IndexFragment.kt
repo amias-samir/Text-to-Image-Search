@@ -188,8 +188,13 @@ class IndexFragment : Fragment() {
             progressBarView?.progress = progressPercent
             progressBarTextView?.text = "Updating image index: ${progressPercent}%" // Use string resource
             if (progress == 1.0) {
-                requireActivity().window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                findNavController().navigate(R.id.action_indexFragment_to_searchFragment)
+                try{
+                    requireActivity().window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    findNavController().navigate(R.id.action_indexFragment_to_searchFragment)                }
+                catch (e: Exception){
+                    e.printStackTrace()
+                }
+
             }
         }
     }

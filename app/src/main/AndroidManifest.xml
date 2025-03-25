@@ -12,9 +12,10 @@
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/Theme.TIDY"
-        tools:targetApi="31"
-        android:largeHeap="true">
+        android:theme="@style/Theme.TextToImageSearch"
+        tools:targetApi="35"
+        android:largeHeap="true"
+        android:enableOnBackInvokedCallback="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

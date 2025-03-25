@@ -8,53 +8,41 @@
     tools:context=".fragments.SearchFragment"
     >
 
-    <Toolbar
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:title = "Text to Image Search">
-
-    </Toolbar>
+        android:text="@string/text_to_image_search"
+        android:elevation="4dp" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
+        android:orientation="horizontal"
+        android:layout_marginStart ="8dp"
+        android:layout_marginEnd ="16dp"
+        android:layout_marginBottom ="8dp"
         android:gravity="center">
 
         <EditText
             android:id="@+id/searchText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="e.g. &quot;Black cat sitting on a table&quot;"
-            android:inputType="textWebEditText|text" />
+            android:layout_width="0dp"
+            android:layout_weight = "1"
+            android:layout_height="40dp"
+            android:paddingStart ="8dp"
+            android:paddingEnd = "4dp"
+            android:hint="@string/eg_search_hints"
+            android:inputType="textWebEditText|text"
+            android:background="@drawable/edittext_border"/>
 
-        <LinearLayout
+        <ImageButton
+            android:id="@+id/searchIcon"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center">
-
-            <Button
-                android:id="@+id/clearButton"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Clear" />
-
-            <Space
-                android:layout_width="10dp"
-                android:layout_height="wrap_content"
-                />
-
-            <Button
-                android:id="@+id/searchButton"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Search" />
-
-        </LinearLayout>
-
+            android:src="@drawable/baseline_image_search_24"
+            android:contentDescription="@string/search_icon"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:padding="8dp" />
 
     </LinearLayout>
 
@@ -64,6 +52,8 @@
         android:layout_height="match_parent"
         android:scrollbars="vertical"
         app:layoutManager="GridLayoutManager"
+        android:layout_marginStart ="6dp"
+        android:layout_marginEnd ="6dp"
         app:spanCount="3" />
 
 

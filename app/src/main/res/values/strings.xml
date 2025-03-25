@@ -1,3 +1,9 @@
 <resources>
-    <string name="app_name">TIDY</string>
+    <string name="app_name">Text to Image Search</string>
+    <string name="text_to_image_search">Text to Image Search</string>
+    <string name="eg_search_hints">"hint: \"mountains and forest\""</string>
+    <string name="refresh">Refresh</string>
+    <string name="search_icon">Search icon</string>
+    <string name="clear">Clear</string>
+    <string name="search">Search</string>
 </resources>

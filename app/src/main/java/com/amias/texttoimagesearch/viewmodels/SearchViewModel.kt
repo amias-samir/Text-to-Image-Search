@@ -5,6 +5,7 @@
 package com.amias.texttoimagesearch.viewmodels
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import com.amias.texttoimagesearch.dot
 
@@ -59,8 +60,13 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                              imageIdxList: List<Long>) {
         val distances = LinkedHashMap<Long, Float>()
         for (i in imageEmbeddingsList.indices) {
-            val dist = searchEmbedding.dot(imageEmbeddingsList[i])
-            distances[imageIdxList[i]] = dist
+            try{
+                val dist = searchEmbedding.dot(imageEmbeddingsList[i])
+                distances[imageIdxList[i]] = dist
+            }catch(exception: ArrayIndexOutOfBoundsException){
+                Log.e("SearchViewModel", "sortByCosineDistance: ${exception.message}")
+            }
+
         }
         searchResults = distances.toList().sortedBy { (k, v) -> v }.map { (k, v) -> k }.reversed()
     }
