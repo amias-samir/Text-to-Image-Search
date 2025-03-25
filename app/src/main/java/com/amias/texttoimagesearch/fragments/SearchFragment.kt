@@ -35,9 +35,13 @@ class SearchFragment : Fragment() {
     private val mORTTextViewModel: ORTTextViewModel by activityViewModels()
     private val mSearchViewModel: SearchViewModel by activityViewModels()
 
+    private val searchHintsLabel = arrayOf("Mountains and Forest", "Cup of Tea", "Dark Sunset Night", "Green Forest", "Waterfalls and River")
+
     override fun onResume() {
         super.onResume()
         searchText = view?.findViewById(R.id.searchText)
+        searchText!!.hint = "hint: \"${searchHintsLabel.random()}\""
+
         val recyclerView = view?.findViewById<RecyclerView>(R.id.recycler_view)
 
         if (mSearchViewModel.fromImg2ImgFlag) {
@@ -85,6 +89,8 @@ class SearchFragment : Fragment() {
         mORTTextViewModel.init()
 
         searchText = view?.findViewById(R.id.searchText)
+        searchText!!.hint = "hint: \"${searchHintsLabel.random()}\""
+
         searchIconButton = view?.findViewById(R.id.searchIcon)
         toolbar = view?.findViewById(R.id.toolbar)
         // Set up the Toolbar
@@ -98,10 +104,6 @@ class SearchFragment : Fragment() {
             mSearchViewModel.sortByCosineDistance(textEmbedding, mORTImageViewModel.embeddingsList, mORTImageViewModel.idxList)
             recyclerView.adapter = ImageAdapter(requireContext(), mSearchViewModel.searchResults!!)
         }
-
-
-
-
         return view
     }
 
