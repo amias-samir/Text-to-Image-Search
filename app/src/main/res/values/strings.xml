@@ -6,4 +6,8 @@
     <string name="search_icon">Search icon</string>
     <string name="clear">Clear</string>
     <string name="search">Search</string>
+    <string name="share_icon">Share Icon</string>
+    <string name="find_more_similar_images">Find more similar images</string>
+    <string name="view_in_map_button">View in Map Button</string>
+    <string name="_1_jan_2023">1 Jan, 2023</string>
 </resources>

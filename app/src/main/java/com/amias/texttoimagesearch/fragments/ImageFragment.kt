@@ -13,6 +13,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.ImageButton
 import android.widget.TextView
 import androidx.core.net.toUri
 import androidx.fragment.app.Fragment
@@ -71,7 +72,7 @@ class ImageFragment : Fragment() {
             parentFragmentManager.popBackStack()
         }
 
-        val buttonShare: Button = view.findViewById(R.id.buttonShare)
+        val buttonShare: ImageButton = view.findViewById(R.id.buttonShare)
         buttonShare.setOnClickListener {
             val sendIntent: Intent = Intent().apply {
                 action = Intent.ACTION_SEND
