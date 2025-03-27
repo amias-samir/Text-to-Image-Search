@@ -4,6 +4,7 @@
 
 package com.amias.texttoimagesearch.fragments
 
+import android.content.Context
 import android.content.Intent
 import android.database.Cursor
 import android.net.Uri
@@ -15,14 +16,20 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.ImageButton
 import android.widget.TextView
+import android.widget.Toast
 import androidx.core.net.toUri
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
 import com.github.chrisbanes.photoview.PhotoView
 import com.amias.texttoimagesearch.R
+import com.amias.texttoimagesearch.utils.GeoLocation
+import com.amias.texttoimagesearch.utils.getGeoLocationFromImage
+import com.amias.texttoimagesearch.utils.getPlaceName
 import com.amias.texttoimagesearch.viewmodels.ORTImageViewModel
 import com.amias.texttoimagesearch.viewmodels.SearchViewModel
+import kotlinx.coroutines.launch
 import java.text.DateFormat
 
 
@@ -52,6 +59,9 @@ class ImageFragment : Fragment() {
         cursor.close()
 
         val dateTextView: TextView = view.findViewById(R.id.dateTextView)
+        val locationNameTextView: TextView = view.findViewById(R.id.locationNameTextView)
+        val buttonViewInMap: ImageButton = view.findViewById(R.id.buttonViewInMap)
+
         dateTextView.text = DateFormat.getDateInstance().format(date)
 
         val singleImageView: PhotoView = view.findViewById(R.id.singeImageView)
@@ -82,6 +92,52 @@ class ImageFragment : Fragment() {
             val shareIntent = Intent.createChooser(sendIntent, null)
             startActivity(shareIntent)
         }
+
+
+        val geoLocation = getGeoLocationFromImage(requireActivity().applicationContext, imageUri!!)
+        if (geoLocation != null) {
+
+            buttonViewInMap.setOnClickListener {
+                openLocationInMap(requireActivity().applicationContext, geoLocation)
+            }
+
+            lifecycleScope.launch {
+               getPlaceName(requireActivity().applicationContext, geoLocation,
+                    onResult = fun(placeName: String?) {
+
+                        if (placeName != null) {
+                            locationNameTextView.text = placeName
+
+                            println("Place name: $placeName")
+                        } else {
+                            locationNameTextView.visibility = View.INVISIBLE
+                            buttonViewInMap.visibility = View.INVISIBLE
+                            println("Unable to find place name.")
+                        }
+                    })
+            }
+
+        } else {
+            println("No location found in the image.")
+        }
+
+
+
         return view
+    }
+
+    fun openLocationInMap(context: Context, geoLocation: GeoLocation, label: String = "Location") {
+        // Create a Uri from latitude and longitude
+        val uri = "geo:0,0?q=${geoLocation.latitude},${geoLocation.longitude}($label)".toUri()
+
+        // Create an Intent
+        val intent = Intent(Intent.ACTION_VIEW, uri)
+
+        // Verify intent can be handled
+        if (intent.resolveActivity(context.packageManager) != null) {
+            context.startActivity(intent)
+        } else {
+            Toast.makeText(context, "No map application found.", Toast.LENGTH_SHORT).show()
+        }
     }
 }

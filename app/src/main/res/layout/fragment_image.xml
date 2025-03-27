@@ -32,7 +32,8 @@
             android:text="@string/_1_jan_2023"
             android:textColor="@color/iconColor"
             android:textSize="14sp"
-            android:typeface="normal" />
+            android:typeface="normal"
+            android:visibility = "invisible"/>
 
         <TextView
             android:id="@+id/dateTextView"
@@ -114,7 +115,8 @@
             android:src="@drawable/ic_location_pin_24"
             android:contentDescription="@string/view_in_map_button"
             android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:padding="8dp" />
+            android:padding="8dp"
+            android:visibility = "invisible"/>
 
         <Space
             android:layout_width="0dp"
