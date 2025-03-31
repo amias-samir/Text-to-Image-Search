@@ -280,8 +280,8 @@ class ORTImageViewModel(
             session.close()
 
             withContext(Dispatchers.IO) {
-                idxList.distinct()
-                embeddingsList.distinct()
+                idxList = ArrayList(idxList.distinct())
+                embeddingsList = ArrayList(embeddingsList.distinct())
             }
 
             withContext(Dispatchers.Main) {

@@ -40,7 +40,51 @@ class SearchFragment : Fragment() {
     private val mSearchViewModel: SearchViewModel by activityViewModels()
 
     private val searchHintsLabel =
-        arrayOf("Mountains and Forest", "Cup of Tea", "Dark Sunset Night", "Green Forest", "Waterfalls and River")
+        arrayOf(
+            "Mountains and Forest",
+            "Cup of Tea",
+            "Dark Sunset Night",
+            "Green Forest",
+            "Waterfalls and River",
+            "City Street Lights",
+            "Beach Sunset",
+            "City Skyline",
+            "City Street Lights",
+            "Golden Beach Sunrise",
+            "Snow-Capped Mountains",
+            "City Skyline at Night",
+            "Blossoming Cherry Trees",
+            "Desert Dunes and Oasis",
+            "Starry Sky Over Mountains",
+            "Calm Lake with Reflections",
+            "Autumn Leaves in Park",
+            "Vibrant Coral Reef",
+            "Rainy Day Street View",
+            "Hot Air Balloons at Dawn",
+            "Rustic Wooden Cabin",
+            "Majestic Eagle in Flight",
+            "Rolling Green Hills",
+            "Glowing Fireflies in Forest",
+            "Snowy Mountain Peaks",
+            "Frosted Pine Trees",
+            "Winter Wonderland",
+            "Frozen Lake",
+            "Cozy Cabin in Snow",
+            "Snowfall in the Forest",
+            "Icy River Path",
+            "Skiing Adventure",
+            "Snow-Covered Village",
+            "Chilly Morning Frost",
+            "Snowman in the Yard",
+            "Frozen Waterfalls",
+            "Winter Night Stars",
+            "Warm Fire in a Snowstorm",
+            "Icicles on Rooftops",
+            "Snow Angels in the Yard",
+            "Quiet Snowy Street",
+            "Husky Sled Ride",
+            "Ice Skating on the Lake",
+        )
 
     override fun onResume() {
         super.onResume()
@@ -125,7 +169,11 @@ class SearchFragment : Fragment() {
 
         searchIconButton?.setOnClickListener {
             val textEmbedding: FloatArray = mORTTextViewModel.getTextEmbedding(searchText?.text.toString())
-            mSearchViewModel.sortByCosineDistance(textEmbedding, mORTImageViewModel.embeddingsList, mORTImageViewModel.idxList)
+            mSearchViewModel.sortByCosineDistance(
+                textEmbedding,
+                mORTImageViewModel.embeddingsList,
+                mORTImageViewModel.idxList,
+            )
             recyclerView.adapter = ImageAdapter(requireContext(), mSearchViewModel.searchResults!!)
         }
         return view
@@ -141,7 +189,9 @@ class SearchFragment : Fragment() {
             Log.i("SearchFragment", "progressData Indexed: $progress%")
 
             progressBar?.visibility = View.VISIBLE
-            progressBar?.setProgress(progress.toFloat(), animate = true)
+            var progressValue = progress.toFloat()
+            progressBar?.setProgress(progressValue, animate = true)
+
             if (tempProgress != progress) {
                 tempProgress = progress
                 debouncer.debounce {

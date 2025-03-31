@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
+import android.graphics.Typeface
 import android.util.AttributeSet
 import android.view.View
 import androidx.core.content.withStyledAttributes
@@ -26,8 +27,8 @@ class CircularProgressTracker
 
         private var progress = 0f
         private var maxProgress = 100f
-        private var strokeWidth = 16f
-        private var textSize = 40f
+        private var strokeWidth = 5f
+        private var textSize = 16f
         private var showText = true
 
         init {
@@ -75,6 +76,7 @@ class CircularProgressTracker
 
             textPaint.textSize = textSize
             textPaint.textAlign = Paint.Align.CENTER
+            textPaint.typeface = Typeface.defaultFromStyle(Typeface.BOLD)
         }
 
         override fun onDraw(canvas: Canvas) {
