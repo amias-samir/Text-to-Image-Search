@@ -8,24 +8,29 @@ import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import android.app.Application
 import android.content.ContentResolver
+import android.content.ContentUris
 import android.database.Cursor
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Build
 import android.provider.MediaStore
 import android.util.Log
-import androidx.lifecycle.*
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.viewModelScope
 import com.amias.texttoimagesearch.R
 import com.amias.texttoimagesearch.centerCrop
 import com.amias.texttoimagesearch.data.ImageEmbedding
 import com.amias.texttoimagesearch.data.ImageEmbeddingDatabase
 import com.amias.texttoimagesearch.data.ImageEmbeddingRepository
-import com.amias.texttoimagesearch.normalizeL2
 import com.amias.texttoimagesearch.preProcess
+import com.amias.texttoimagesearch.utils.normalizeL2
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.*
+import java.io.FileNotFoundException
+import java.util.Collections
 
 /**
  * The `ORTImageViewModel` class is an Android ViewModel responsible for managing the image
@@ -43,22 +48,25 @@ import java.util.*
  *
  * @param application The application instance.
  */
-class ORTImageViewModel(application: Application) : AndroidViewModel(application) {
+class ORTImageViewModel(
+    application: Application,
+) : AndroidViewModel(application) {
     private var ortEnv: OrtEnvironment = OrtEnvironment.getEnvironment()
     private var repository: ImageEmbeddingRepository
     var idxList: ArrayList<Long> = arrayListOf()
     var embeddingsList: ArrayList<FloatArray> = arrayListOf()
     var progress: MutableLiveData<Double> = MutableLiveData(0.0)
+    var progressData: MutableLiveData<ProgressData> = MutableLiveData(ProgressData(0, 0))
 
     /**
- * Initializes the ImageEmbeddingRepository by retrieving the ImageEmbeddingDao from the ImageEmbeddingDatabase.
- *
- * This block is executed when the ImageEmbeddingViewModel is initialized.
- */
-init {
-    val imageEmbeddingDao = ImageEmbeddingDatabase.getDatabase(application).imageEmbeddingDao()
-    repository = ImageEmbeddingRepository(imageEmbeddingDao)
-}
+     * Initializes the ImageEmbeddingRepository by retrieving the ImageEmbeddingDao from the ImageEmbeddingDatabase.
+     *
+     * This block is executed when the ImageEmbeddingViewModel is initialized.
+     */
+    init {
+        val imageEmbeddingDao = ImageEmbeddingDatabase.getDatabase(application).imageEmbeddingDao()
+        repository = ImageEmbeddingRepository(imageEmbeddingDao)
+    }
 
     /**
      * Generates an index of image embeddings from the device's media store.
@@ -90,39 +98,119 @@ init {
         val model = resources.openRawResource(modelID).readBytes()
         val session = ortEnv.createSession(model)
 
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(Dispatchers.Default) {
             withContext(Dispatchers.Main) {
                 progress.value = 0.0 // Set initial progress on main thread
+                progressData.value = ProgressData(0, 0)
             }
             val uri: Uri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-            val projection = arrayOf(
-                MediaStore.Images.Media._ID,
-                MediaStore.Images.Media.DATE_MODIFIED,
-                MediaStore.Images.Media.BUCKET_DISPLAY_NAME,
-            )
+            val projection =
+                arrayOf(
+                    MediaStore.Images.Media._ID,
+                    MediaStore.Images.Media.DATE_MODIFIED,
+                    MediaStore.Images.Media.DISPLAY_NAME,
+                    MediaStore.Images.Media.SIZE,
+                    MediaStore.Images.Media.BUCKET_DISPLAY_NAME,
+                )
+
+            val selectionForPre10 =
+                "${MediaStore.Images.Media.MIME_TYPE} IN (?, ?, ?, ?, ?, ?, ?, ?)" +
+                    " AND ${MediaStore.Images.Media.DATE_MODIFIED} > ?" + // Exclude temporary files
+                    "AND ${MediaStore.Images.Media.SIZE} > ?" // Include files greater than 10KB
+
+            val selectionPriorTo10 =
+                "${MediaStore.Images.Media.MIME_TYPE} IN (?, ?, ?, ?, ?, ?, ?, ?)" +
+                    " AND ${MediaStore.Images.Media.DATE_MODIFIED} > ?" + // Exclude temporary files
+                    "AND (${MediaStore.Images.Media.IS_TRASHED} IS NULL OR ${MediaStore.Images.Media.IS_TRASHED} = 0)" +
+                    "AND ${MediaStore.Images.Media.SIZE} > ?" + // Include files greater than 10KB
+                    " AND ${MediaStore.Images.Media.IS_PENDING} = ?" + // Exclude pending files
+                    " AND ${MediaStore.Images.Media.DATE_EXPIRES} IS NULL" // Exclude files with expiry dates
+
+            val selection =
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+                    selectionPriorTo10
+                } else {
+                    selectionForPre10
+                }
+
+            val selectionArgsForPre10 =
+                arrayOf(
+                    "image/jpeg", // JPEG
+                    "image/jpg", // JPEG
+                    "image/png", // PNG
+                    "image/gif", // GIF
+                    "image/bmp", // BMP
+                    "image/webp", // WebP
+                    "image/heif", // HEIF
+                    "image/heic", // HEIC (variant of HEIF)
+                    "0", // Exclude files with very old modification dates (temporary files)
+                    "10240", // File size > 10KB (size in bytes)
+                )
+
+            val selectionArgsPriorTo10 =
+                arrayOf(
+                    "image/jpeg", // JPEG
+                    "image/jpg", // JPEG
+                    "image/png", // PNG
+                    "image/gif", // GIF
+                    "image/bmp", // BMP
+                    "image/webp", // WebP
+                    "image/heif", // HEIF
+                    "image/heic", // HEIC (variant of HEIF)
+                    "0", // Exclude files with very old modification dates (temporary files)
+                    "10240", // File size > 10KB (size in bytes)
+                    "0", // IS_PENDING = 0 (Not pending)
+                )
+
+            val selectionArgs =
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+                    selectionArgsPriorTo10
+                } else {
+                    selectionArgsForPre10
+                }
+
             val sortOrder = "${MediaStore.Images.Media._ID} ASC"
             val contentResolver: ContentResolver = getApplication<Application>().contentResolver
-            val cursor: Cursor? = contentResolver.query(uri, projection, null, null, sortOrder)
+            val cursor: Cursor? = contentResolver.query(uri, projection, selection, selectionArgs, sortOrder)
             val totalImages = cursor?.count ?: 0
             cursor?.use {
+                val seenFiles = mutableSetOf<String>() // Set to track unique files
+
                 val idColumn: Int = it.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
                 val dateColumn: Int =
                     it.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_MODIFIED)
-                val bucketColumn: Int =
-                    it.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
+//                val bucketColumn: Int = it.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
+
                 while (it.moveToNext()) {
                     val id: Long = it.getLong(idColumn)
                     val date: Long = it.getLong(dateColumn)
-                    val bucket: String = it.getString(bucketColumn)
+
+                    val displayName = it.getString(it.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME))
+                    val size = it.getLong(it.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE))
+                    val dateModified = it.getLong(it.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_MODIFIED))
+                    // Create a unique identifier (e.g., based on DISPLAY_NAME + SIZE + DATE_MODIFIED)
+                    val uniqueKey = "$displayName-$size-$dateModified"
+
+                    if (!seenFiles.contains(uniqueKey)) {
+                        seenFiles.add(uniqueKey) // Track the file as seen
+                    } else {
+                        continue
+                    }
+
+//                    val bucket: String = it.getString(bucketColumn)
                     // Don't add screenshots to image index
-                    if (bucket == "Screenshots") continue
+//                    if (bucket == "Screenshots") continue
+
                     val record = repository.getRecord(id) as ImageEmbedding?
                     if (record != null) {
+                        if (idxList.contains(record.id)) continue
                         idxList.add(record.id)
                         embeddingsList.add(record.embedding)
                     } else {
-                        try{
+                        if (idxList.contains(id)) continue
+                        try {
                             val imageUri: Uri = Uri.withAppendedPath(uri, id.toString())
+
                             val inputStream = contentResolver.openInputStream(imageUri)
                             val bytes = inputStream?.readBytes()
                             inputStream?.close()
@@ -134,10 +222,11 @@ init {
                                 val rawBitmap = centerCrop(bitmap, 224)
                                 val inputShape = longArrayOf(1, 3, 224, 224)
                                 val inputName = "pixel_values"
-                                val imgData = withContext(Dispatchers.Default) {
-                                    // execute in the background
-                                    preProcess(rawBitmap)
-                                }
+                                val imgData =
+                                    withContext(Dispatchers.Default) {
+                                        // execute in the background
+                                        preProcess(rawBitmap)
+                                    }
                                 val inputTensor =
                                     OnnxTensor.createTensor(ortEnv, imgData, inputShape)
 
@@ -146,51 +235,88 @@ init {
                                         session?.run(
                                             Collections.singletonMap(
                                                 inputName,
-                                                inputTensor
-                                            )
+                                                inputTensor,
+                                            ),
                                         )
                                     output.use {
-                                        @Suppress("UNCHECKED_CAST") var rawOutput =
+                                        @Suppress("UNCHECKED_CAST")
+                                        var rawOutput =
                                             ((output?.get(0)?.value) as Array<FloatArray>)[0]
-                                        rawOutput = withContext(Dispatchers.Default) {
-                                            // execute in the background
-                                            normalizeL2(rawOutput)
-                                        }
+                                        rawOutput =
+                                            withContext(Dispatchers.Default) {
+                                                // execute in the background
+                                                normalizeL2(rawOutput)
+                                            }
                                         repository.addImageEmbedding(
                                             ImageEmbedding(
-                                                id, date, rawOutput
-                                            )
+                                                id,
+                                                date,
+                                                rawOutput,
+                                            ),
                                         )
                                         idxList.add(id)
                                         embeddingsList.add(rawOutput)
-
                                     }
                                 }
                             }
-
-                        }catch(exception: Exception){
+                        } catch (exception: FileNotFoundException) {
+//                            removeNonExistentFileFromMediaStore(contentResolver, Uri.withAppendedPath(uri, id.toString()))
                             Log.d("ORTImageViewModel", "Error loading image: $exception \n ${Uri.withAppendedPath(uri, id.toString())}")
+                        } catch (exception: SecurityException) {
+                            Log.d("ORTImageViewModel", "Error Opening image: $exception${Uri.withAppendedPath(uri, id.toString())}")
+                        } catch (exception: Exception) {
+                            Log.d("ORTImageViewModel", "Error: $exception${Uri.withAppendedPath(uri, id.toString())}")
                         }
-                        }
+                    }
 
-
-                        withContext(Dispatchers.Main) {
-                            // Record created/loaded, update progress
-                            progress.value = it.position.toDouble() / totalImages.toDouble()
-                        }
-
+                    withContext(Dispatchers.Main) {
+                        // Record created/loaded, update progress
+                        progress.value = it.position.toDouble() / totalImages.toDouble()
+                        progressData.value = ProgressData(it.position, totalImages)
+                    }
                 }
             }
             cursor?.close()
             session.close()
 
-            withContext(Dispatchers.Main) {
-                progress.value = 1.0
+            withContext(Dispatchers.IO) {
+                idxList.distinct()
+                embeddingsList.distinct()
             }
 
+            withContext(Dispatchers.Main) {
+                progress.value = 1.0
+                progressData.value = ProgressData(totalImages, totalImages)
+            }
         }
     }
 }
 
+fun removeNonExistentFileFromMediaStore(
+    contentResolver: ContentResolver,
+    uri: Uri,
+) {
+    try {
+        // Get the ID from the URI
+        val id = ContentUris.parseId(uri)
 
+        // Attempt to delete the reference
+        val deletedRows =
+            contentResolver.delete(
+                uri,
+                "${MediaStore.Images.Media._ID} = ?",
+                arrayOf(id.toString()),
+            )
 
+        if (deletedRows > 0) {
+            Log.d("MediaStore", "Removed non-existent file reference: $uri")
+        }
+    } catch (e: Exception) {
+        Log.e("MediaStore", "Failed to remove reference: $uri", e)
+    }
+}
+
+data class ProgressData(
+    val indexed: Int,
+    val total: Int,
+)

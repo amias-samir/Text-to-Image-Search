@@ -7,7 +7,7 @@ package com.amias.texttoimagesearch.viewmodels
 import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
-import com.amias.texttoimagesearch.dot
+import com.amias.texttoimagesearch.utils.dot
 
 /**
  * ViewModel class responsible for managing the search functionality and results.
@@ -26,7 +26,9 @@ import com.amias.texttoimagesearch.dot
  * @constructor Creates a SearchViewModel with the given application context.
  * @param application The application context.
  */
-class SearchViewModel(application: Application) : AndroidViewModel(application) {
+class SearchViewModel(
+    application: Application,
+) : AndroidViewModel(application) {
     var searchResults: List<Long>? = null
     var fromImg2ImgFlag: Boolean = false
 
@@ -55,21 +57,28 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
      *
      * @see FloatArray.dot for the calculation of cosine similarity.
      */
-    fun sortByCosineDistance(searchEmbedding: FloatArray,
-                             imageEmbeddingsList: List<FloatArray>,
-                             imageIdxList: List<Long>) {
+    fun sortByCosineDistance(
+        searchEmbedding: FloatArray,
+        imageEmbeddingsList: List<FloatArray>,
+        imageIdxList: List<Long>,
+    ) {
         val distances = LinkedHashMap<Long, Float>()
+        Log.e("SearchViewModel", "sortByCosineDistance imageEmbeddingsList Size: ${imageEmbeddingsList.size}")
+        Log.e("SearchViewModel", "sortByCosineDistance imageIdxList Size: ${imageIdxList.size}")
+
         for (i in imageEmbeddingsList.indices) {
-            try{
+            try {
                 val dist = searchEmbedding.dot(imageEmbeddingsList[i])
                 distances[imageIdxList[i]] = dist
-            }catch(exception: ArrayIndexOutOfBoundsException){
+            } catch (exception: ArrayIndexOutOfBoundsException) {
                 Log.e("SearchViewModel", "sortByCosineDistance: ${exception.message}")
             }
-
         }
-        searchResults = distances.toList().sortedBy { (k, v) -> v }.map { (k, v) -> k }.reversed()
+        searchResults =
+            distances
+                .toList()
+                .sortedBy { (k, v) -> v }
+                .map { (k, v) -> k }
+                .reversed()
     }
-
-
 }

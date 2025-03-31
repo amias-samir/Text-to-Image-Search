@@ -21,17 +21,16 @@ import androidx.core.net.toUri
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
-import com.bumptech.glide.Glide
-import com.github.chrisbanes.photoview.PhotoView
 import com.amias.texttoimagesearch.R
 import com.amias.texttoimagesearch.utils.GeoLocation
 import com.amias.texttoimagesearch.utils.getGeoLocationFromImage
 import com.amias.texttoimagesearch.utils.getPlaceName
 import com.amias.texttoimagesearch.viewmodels.ORTImageViewModel
 import com.amias.texttoimagesearch.viewmodels.SearchViewModel
+import com.bumptech.glide.Glide
+import com.github.chrisbanes.photoview.PhotoView
 import kotlinx.coroutines.launch
 import java.text.DateFormat
-
 
 class ImageFragment : Fragment() {
     private var imageUri: Uri? = null
@@ -40,7 +39,8 @@ class ImageFragment : Fragment() {
     private val mSearchViewModel: SearchViewModel by activityViewModels()
 
     override fun onCreateView(
-        inflater: LayoutInflater, container: ViewGroup?,
+        inflater: LayoutInflater,
+        container: ViewGroup?,
         savedInstanceState: Bundle?,
     ): View? {
         val view = inflater.inflate(R.layout.fragment_image, container, false)
@@ -50,7 +50,7 @@ class ImageFragment : Fragment() {
             imageUri = it.getString("image_uri")?.toUri()
         }
 
-        //Get image date from image URI
+        // Get image date from image URI
         val cursor: Cursor =
             requireContext().contentResolver.query(imageUri!!, null, null, null, null)!!
         cursor.moveToFirst()
@@ -69,42 +69,46 @@ class ImageFragment : Fragment() {
 
         val buttonImage2Image: Button = view.findViewById(R.id.buttonImage2Image)
         buttonImage2Image.setOnClickListener {
-            imageId?.let {
-                val imageIndex = mORTImageViewModel.idxList.indexOf(it)
-                val imageEmbedding = mORTImageViewModel.embeddingsList[imageIndex]
-                mSearchViewModel.sortByCosineDistance(
-                    imageEmbedding,
-                    mORTImageViewModel.embeddingsList,
-                    mORTImageViewModel.idxList
-                )
+            try {
+                imageId?.let {
+                    val imageIndex = mORTImageViewModel.idxList.indexOf(it)
+                    val imageEmbedding = mORTImageViewModel.embeddingsList[imageIndex]
+                    mSearchViewModel.sortByCosineDistance(
+                        imageEmbedding,
+                        mORTImageViewModel.embeddingsList,
+                        mORTImageViewModel.idxList,
+                    )
+                }
+                mSearchViewModel.fromImg2ImgFlag = true
+                parentFragmentManager.popBackStack()
+            } catch (exception: Exception) {
+                exception.printStackTrace()
             }
-            mSearchViewModel.fromImg2ImgFlag = true
-            parentFragmentManager.popBackStack()
         }
 
         val buttonShare: ImageButton = view.findViewById(R.id.buttonShare)
         buttonShare.setOnClickListener {
-            val sendIntent: Intent = Intent().apply {
-                action = Intent.ACTION_SEND
-                putExtra(Intent.EXTRA_STREAM, imageUri)
-                type = "image/*"
-            }
+            val sendIntent: Intent =
+                Intent().apply {
+                    action = Intent.ACTION_SEND
+                    putExtra(Intent.EXTRA_STREAM, imageUri)
+                    type = "image/*"
+                }
             val shareIntent = Intent.createChooser(sendIntent, null)
             startActivity(shareIntent)
         }
 
-
         val geoLocation = getGeoLocationFromImage(requireActivity().applicationContext, imageUri!!)
         if (geoLocation != null) {
-
             buttonViewInMap.setOnClickListener {
                 openLocationInMap(requireActivity().applicationContext, geoLocation)
             }
 
             lifecycleScope.launch {
-               getPlaceName(requireActivity().applicationContext, geoLocation,
+                getPlaceName(
+                    requireActivity().applicationContext,
+                    geoLocation,
                     onResult = fun(placeName: String?) {
-
                         if (placeName != null) {
                             locationNameTextView.text = placeName
 
@@ -114,19 +118,21 @@ class ImageFragment : Fragment() {
                             buttonViewInMap.visibility = View.INVISIBLE
                             println("Unable to find place name.")
                         }
-                    })
+                    },
+                )
             }
-
         } else {
             println("No location found in the image.")
         }
 
-
-
         return view
     }
 
-    fun openLocationInMap(context: Context, geoLocation: GeoLocation, label: String = "Location") {
+    fun openLocationInMap(
+        context: Context,
+        geoLocation: GeoLocation,
+        label: String = "Location",
+    ) {
         // Create a Uri from latitude and longitude
         val uri = "geo:0,0?q=${geoLocation.latitude},${geoLocation.longitude}($label)".toUri()
 

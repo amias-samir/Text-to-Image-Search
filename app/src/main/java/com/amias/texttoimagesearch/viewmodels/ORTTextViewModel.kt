@@ -10,12 +10,13 @@ import android.app.Application
 import android.util.JsonReader
 import androidx.lifecycle.AndroidViewModel
 import com.amias.texttoimagesearch.R
-import com.amias.texttoimagesearch.normalizeL2
 import com.amias.texttoimagesearch.tokenizer.ClipTokenizer
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.nio.IntBuffer
 import java.util.HashMap
+import kotlin.math.abs
+import kotlin.math.sqrt
 
 /**
  * ORTTextViewModel is an Android ViewModel responsible for managing text embeddings using the ONNX Runtime.
@@ -26,7 +27,9 @@ import java.util.HashMap
  *
  * @param application The application instance.
  */
-class ORTTextViewModel(application: Application) : AndroidViewModel(application) {
+class ORTTextViewModel(
+    application: Application,
+) : AndroidViewModel(application) {
     private val ortEnv: OrtEnvironment = OrtEnvironment.getEnvironment()
     private val modelID = R.raw.textual_quant
     private val resources = getApplication<Application>().resources
@@ -68,53 +71,133 @@ class ORTTextViewModel(application: Application) : AndroidViewModel(application)
      * @return A FloatArray representing the text embedding, normalized to unit length.
      * @throws Exception if there's an error during tensor creation or model execution.
      */
+
     fun getTextEmbedding(text: String): FloatArray {
-        // Tokenize
-        val textClean = queryFilter.replace(text, "").lowercase()
-        var tokens: MutableList<Int> = ArrayList()
+        // Improved text cleaning
+        val textClean =
+            text
+                .replace(queryFilter, "")
+                .trim()
+                .lowercase()
+                .replace(Regex("\\s+"), " ") // Normalize whitespace
+
+        // Tokenization with proper handling
+        val tokens = mutableListOf<Int>()
         tokens.add(tokenBOS)
-        tokens.addAll(tokenizer.encode(textClean))
+
+        // Handle empty text case explicitly
+        if (textClean.isNotEmpty()) {
+            tokens.addAll(tokenizer.encode(textClean))
+        }
+
         tokens.add(tokenEOS)
 
-        var mask: MutableList<Int> = ArrayList()
-        for (i in 0 until tokens.size) {
-            mask.add(1)
-        }
-        while (tokens.size < 77) {
-            tokens.add(0)
-            mask.add(0)
-        }
-        tokens = tokens.subList(0, 77)
-        mask = mask.subList(0, 77)
+        // Create attention mask with proper sizing
+        val mask = MutableList(tokens.size) { 1 }
 
-        // Convert to tensor
-        val inputShape = longArrayOf(1, 77)
-        val inputIds = IntBuffer.allocate(1 * 77)
-        inputIds.rewind()
-        for (i in 0 until 77) {
-            inputIds.put(tokens[i])
+        // Use padding configuration variables for better maintainability
+        val maxSequenceLength = 77
+        val paddingToken = 0
+
+        // Handle sequences of all lengths correctly
+        val paddedTokens =
+            if (tokens.size >= maxSequenceLength) {
+                tokens.subList(0, maxSequenceLength)
+            } else {
+                val padding = MutableList(maxSequenceLength - tokens.size) { paddingToken }
+                val paddedList = ArrayList(tokens)
+                paddedList.addAll(padding)
+                paddedList
+            }
+
+        // Create properly sized attention mask
+        val paddedMask =
+            if (mask.size >= maxSequenceLength) {
+                mask.subList(0, maxSequenceLength)
+            } else {
+                val padding = MutableList(maxSequenceLength - mask.size) { 0 }
+                val paddedList = ArrayList(mask)
+                paddedList.addAll(padding)
+                paddedList
+            }
+
+        // Convert to tensor with proper buffer management
+        val inputShape = longArrayOf(1, maxSequenceLength.toLong())
+
+        // Use direct buffers for better performance
+        val inputIds = IntBuffer.allocate(1 * maxSequenceLength)
+        inputIds.clear()
+        for (i in 0 until maxSequenceLength) {
+            inputIds.put(paddedTokens[i])
         }
-        inputIds.rewind()
+        inputIds.flip()
         val inputIdsTensor = OnnxTensor.createTensor(ortEnv, inputIds, inputShape)
 
-        val attentionMask = IntBuffer.allocate(1 * 77)
-        attentionMask.rewind()
-        for (i in 0 until 77) {
-            attentionMask.put(mask[i])
+        val attentionMask = IntBuffer.allocate(1 * maxSequenceLength)
+        attentionMask.clear()
+        for (i in 0 until maxSequenceLength) {
+            attentionMask.put(paddedMask[i])
         }
-        attentionMask.rewind()
+        attentionMask.flip()
         val attentionMaskTensor = OnnxTensor.createTensor(ortEnv, attentionMask, inputShape)
 
-        val inputMap: MutableMap<String, OnnxTensor> = HashMap()
-        inputMap["input_ids"] = inputIdsTensor
-        inputMap["attention_mask"] = attentionMaskTensor
+        try {
+            // Create input map
+            val inputMap =
+                mapOf(
+                    "input_ids" to inputIdsTensor,
+                    "attention_mask" to attentionMaskTensor,
+                )
 
-        val output = session?.run(inputMap)
-        output.use {
-            @Suppress("UNCHECKED_CAST") var rawOutput =
-                ((output?.get(0)?.value) as Array<FloatArray>)[0]
-            rawOutput = normalizeL2(rawOutput)
-            return rawOutput
+            // Properly manage resources with try-with-resources pattern
+            return session?.run(inputMap)?.use { output ->
+                @Suppress("UNCHECKED_CAST")
+                val rawOutput = (output[0]?.value as Array<FloatArray>)[0]
+
+                // Apply improved normalization
+                normalizeL2(rawOutput)
+            } ?: FloatArray(0)
+        } finally {
+            inputIdsTensor.close()
+            attentionMaskTensor.close()
+        }
+    }
+
+    // Improved L2 normalization with numerical stability
+    fun normalizeL2(vector: FloatArray): FloatArray {
+        // Find maximum absolute value for scaling
+        var maxAbs = 0f
+        for (value in vector) {
+            val abs = abs(value)
+            if (abs > maxAbs) maxAbs = abs
+        }
+
+        // Use double precision for intermediate calculations
+        var sumSquares = 0.0
+        val epsilon = 1e-12
+
+        // If values are very small, avoid potential underflow
+        if (maxAbs < epsilon) {
+            return FloatArray(vector.size) { 0f }
+        }
+
+        // Normalize to avoid overflow/underflow during square calculation
+        val scale = if (maxAbs > 1e-3) maxAbs else 1f
+
+        for (value in vector) {
+            val scaled = value / scale
+            sumSquares += (scaled * scaled).toDouble()
+        }
+
+        val norm = sqrt(sumSquares) * scale
+
+        // Avoid division by zero
+        if (norm < epsilon) {
+            return FloatArray(vector.size) { 0f }
+        }
+
+        return FloatArray(vector.size) { i ->
+            (vector[i] / norm).toFloat()
         }
     }
 
@@ -135,18 +218,19 @@ class ORTTextViewModel(application: Application) : AndroidViewModel(application)
      * @throws IllegalStateException if the JSON format is invalid.
      */
     fun getVocab(): Map<String, Int> {
-        val vocab = hashMapOf<String, Int>().apply {
-            resources.openRawResource(R.raw.vocab).use {
-                val vocabReader = JsonReader(InputStreamReader(it, "UTF-8"))
-                vocabReader.beginObject()
-                while (vocabReader.hasNext()) {
-                    val key = vocabReader.nextName().replace("</w>", " ")
-                    val value = vocabReader.nextInt()
-                    put(key, value)
+        val vocab =
+            hashMapOf<String, Int>().apply {
+                resources.openRawResource(R.raw.vocab).use {
+                    val vocabReader = JsonReader(InputStreamReader(it, "UTF-8"))
+                    vocabReader.beginObject()
+                    while (vocabReader.hasNext()) {
+                        val key = vocabReader.nextName().replace("</w>", " ")
+                        val value = vocabReader.nextInt()
+                        put(key, value)
+                    }
+                    vocabReader.close()
                 }
-                vocabReader.close()
             }
-        }
         return vocab
     }
 
@@ -184,18 +268,19 @@ class ORTTextViewModel(application: Application) : AndroidViewModel(application)
      * ```
      */
     fun getMerges(): HashMap<Pair<String, String>, Int> {
-        val merges = hashMapOf<Pair<String, String>, Int>().apply {
-            resources.openRawResource(R.raw.merges).use {
-                val mergesReader = BufferedReader(InputStreamReader(it))
-                mergesReader.useLines { seq ->
-                    seq.drop(1).forEachIndexed { i, s ->
-                        val list = s.split(" ")
-                        val keyTuple = list[0] to list[1].replace("</w>", " ")
-                        put(keyTuple, i)
+        val merges =
+            hashMapOf<Pair<String, String>, Int>().apply {
+                resources.openRawResource(R.raw.merges).use {
+                    val mergesReader = BufferedReader(InputStreamReader(it))
+                    mergesReader.useLines { seq ->
+                        seq.drop(1).forEachIndexed { i, s ->
+                            val list = s.split(" ")
+                            val keyTuple = list[0] to list[1].replace("</w>", " ")
+                            put(keyTuple, i)
+                        }
                     }
                 }
             }
-        }
         return merges
     }
 }

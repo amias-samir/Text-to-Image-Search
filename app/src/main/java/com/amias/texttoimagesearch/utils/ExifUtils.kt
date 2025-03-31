@@ -4,6 +4,7 @@ import android.content.Context
 import android.location.Geocoder
 import android.net.Uri
 import android.os.Build
+import android.util.Log
 import androidx.exifinterface.media.ExifInterface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -15,7 +16,10 @@ import java.util.Locale
  * @property latitude The latitude coordinate in degrees.
  * @property longitude The longitude coordinate in degrees.
  */
-data class GeoLocation(val latitude: Double, val longitude: Double)
+data class GeoLocation(
+    val latitude: Double,
+    val longitude: Double,
+)
 
 /**
  * Tries to extract the geolocation from an image using its EXIF metadata.
@@ -27,10 +31,21 @@ data class GeoLocation(val latitude: Double, val longitude: Double)
  *
  * @return A `GeoLocation` object if successful, otherwise null.
  */
-fun getGeoLocationFromImage(context: Context, imageUri: Uri): GeoLocation? {
-    return try {
-        context.contentResolver.openInputStream(imageUri)?.use { inputStream -> // Opens the input stream of the image
+fun getGeoLocationFromImage(
+    context: Context,
+    imageUri: Uri,
+): GeoLocation? =
+    try {
+        context.contentResolver.openInputStream(imageUri)?.use { inputStream ->
+            // Opens the input stream of the image
             val exifInterface = ExifInterface(inputStream) // Creates an ExifInterface object to read image metadata
+
+            // Retrieves the latitude data from the EXIF metadata
+            val latitude = exifInterface.getAttribute(ExifInterface.TAG_GPS_LATITUDE)
+            val latitudeRef = exifInterface.getAttribute(ExifInterface.TAG_GPS_LATITUDE_REF)
+            val longitude = exifInterface.getAttribute(ExifInterface.TAG_GPS_LONGITUDE)
+            val longitudeRef = exifInterface.getAttribute(ExifInterface.TAG_GPS_LONGITUDE_REF)
+            Log.d("GeoLocation", "Latitude: $latitude, LatitudeRef: $latitudeRef, Longitude: $longitude, LongitudeRef: $longitudeRef")
 
             val latLong = exifInterface.latLong // Retrieves the latitude and longitude data from the EXIF metadata
             if (latLong != null) { // Checks if geolocation data exists
@@ -43,9 +58,6 @@ fun getGeoLocationFromImage(context: Context, imageUri: Uri): GeoLocation? {
         e.printStackTrace() // Prints stack trace if an error occurs
         null // Returns null on error
     }
-}
-
-
 
 /**
  * **Given a geographical location, attempts to asynchronously retrieve the place name associated with it.**
@@ -73,42 +85,43 @@ fun getGeoLocationFromImage(context: Context, imageUri: Uri): GeoLocation? {
  * }
  * ```
  */
-suspend fun getPlaceName(context: Context, geoLocation: GeoLocation,
-                 onResult: (String?) -> Unit
-){
-    return withContext(Dispatchers.IO) {
+suspend fun getPlaceName(
+    context: Context,
+    geoLocation: GeoLocation,
+    onResult: (String?) -> Unit,
+) = withContext(Dispatchers.IO) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        val geocoder = Geocoder(context, Locale.getDefault())
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val geocoder = Geocoder(context, Locale.getDefault())
-
-            geocoder.getFromLocation(geoLocation.latitude, geoLocation.longitude, 1) { addresses ->
-                if (addresses.isNotEmpty()) {
-                    val address = addresses[0]
-                    val placeName = listOfNotNull(
+        geocoder.getFromLocation(geoLocation.latitude, geoLocation.longitude, 1) { addresses ->
+            if (addresses.isNotEmpty()) {
+                val address = addresses[0]
+                val placeName =
+                    listOfNotNull(
                         address.locality,
                         address.adminArea,
-                        address.countryName
+                        address.countryName,
                     ).joinToString(", ")
-                    onResult(placeName)
-                } else {
-                    onResult(null)
-                }
-            }
-        } else {
-            try {
-                val geocoder = Geocoder(context, Locale.getDefault())
-                val addresses =
-                    geocoder.getFromLocation(geoLocation.latitude, geoLocation.longitude, 1)
-
-                if (!addresses.isNullOrEmpty()) {
-                    val address = addresses[0]
-                    // You can customize this according to your needs:
-                    onResult("${address.locality ?: ""}, ${address.adminArea ?: ""}, ${address.countryName ?: ""}")
-                } else onResult(null)
-            } catch (e: Exception) {
-                e.printStackTrace()
+                onResult(placeName)
+            } else {
                 onResult(null)
             }
+        }
+    } else {
+        try {
+            val geocoder = Geocoder(context, Locale.getDefault())
+            val addresses = geocoder.getFromLocation(geoLocation.latitude, geoLocation.longitude, 1)
+
+            if (!addresses.isNullOrEmpty()) {
+                val address = addresses[0]
+                // You can customize this according to your needs:
+                onResult("${address.locality ?: ""}, ${address.adminArea ?: ""}, ${address.countryName ?: ""}")
+            } else {
+                onResult(null)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            onResult(null)
         }
     }
 }

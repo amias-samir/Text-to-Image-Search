@@ -9,4 +9,6 @@
     <color name="white">#FFFFFFFF</color>
     <color name="iconColor">#FFD3D3D3</color>
 
+    <color name="toolbarBgColor"> @color/black</color>
+
 </resources>

@@ -40,8 +40,7 @@ class ClipTokenizer(
     private val bpeRanks: Map<Pair<String, String>, Int>,
 ) {
     private val encodeRegex =
-//        Regex("""<\|startoftext\|>|<\|endoftext\|>|'s|'t|'re|'ve|'m|'ll|'d|[\p{L}]+|[\p{N}]|[^\s\p{L}\p{N}]+""")
-        Regex("""<\|startoftext\|>|<\|endoftext\|>|(?:'s|'t|'re|'ve|'m|'ll|'d)|\b[\p{L}]+\b|[\p{N}]|[^\s\p{L}\p{N}]""")
+        Regex("""<\|startoftext\|>|<\|endoftext\|>|(?:'s|'t|'re|'ve|'m|'ll|'d)|\b[\p{L}]+\b|[\p{N}]+|[^\s\p{L}\p{N}]+""")
 
     /**
      * Encodes a given text string into a list of integers using a Byte Pair Encoding (BPE) model.
@@ -65,10 +64,22 @@ class ClipTokenizer(
      *    - `bpe(it)` (which should be defined elsewhere, e.g., `private fun bpe(token: String): List<String> {...}`)
      */
     fun encode(text: String): MutableList<Int> {
-        val tokens = encodeRegex.findAll(text).map { result ->
-            result.value.codePoints().boxed().map { byteEncoder[it]!! }.toArray().joinToString("")
-        }
-        return tokens.map { bpe(it) }.flatten().map { encoder[it]!! }.toMutableList()
+        if (text.isBlank()) return mutableListOf() // Handle empty input
+
+        val tokens =
+            encodeRegex.findAll(text).map { result ->
+                result.value
+                    .codePoints()
+                    .boxed()
+                    .map { byteEncoder[it]!! }
+                    .toArray()
+                    .joinToString("")
+            }
+        return tokens
+            .flatMap {
+                val bpeResult = bpe(it)
+                bpeResult.mapNotNull { subToken -> encoder[subToken] }
+            }.toMutableList()
     }
 
     /**
@@ -110,23 +121,39 @@ class ClipTokenizer(
         var word = wordWithBreak.toList()
         var pairs = getPairs(word)
 
+        // Track already processed pairs to avoid redundant work
+        val processedPairs = mutableSetOf<Pair<String, String>>()
+
         while (true) {
-            if (!pairs.any { bpeRanks.containsKey(it) }) break
-            val (first, second) = pairs.minBy { bpeRanks.getOrDefault(it, Int.MAX_VALUE) }
+            // Filter out already processed pairs
+            val validPairs = pairs.filter { !processedPairs.contains(it) && bpeRanks.containsKey(it) }
+            if (validPairs.isEmpty()) break
+
+            val bigrams = validPairs.associateWith { bpeRanks.getOrDefault(it, Int.MAX_VALUE) }
+            val (first, second) = bigrams.minByOrNull { it.value }?.key ?: break
+
+            // Mark this pair as processed
+            processedPairs.add(first to second)
 
             var i = 0
             val newWord = mutableListOf<String>()
+
             while (i < word.size) {
+                // Find next occurrence of first token starting from position i
                 val j = word.withIndex().indexOfFirst { it.index >= i && it.value == first }
-                if (j != -1) {
-                    newWord.addAll(word.subList(i, j))
-                    i = j
-                } else {
+
+                if (j == -1) {
+                    // No more occurrences, add remaining tokens
                     newWord.addAll(word.subList(i, word.size))
                     break
+                } else {
+                    // Add tokens before the occurrence
+                    newWord.addAll(word.subList(i, j))
+                    i = j
                 }
 
-                if (word[i] == first && i < word.size - 1 && word[i + 1] == second) {
+                // Check if we can merge
+                if (i < word.size - 1 && word[i] == first && word[i + 1] == second) {
                     newWord.add(first + second)
                     i += 2
                 } else {
@@ -142,6 +169,7 @@ class ClipTokenizer(
                 pairs = getPairs(word)
             }
         }
+
         return word
     }
 
@@ -161,11 +189,10 @@ class ClipTokenizer(
      * @param word The input list of strings.
      * @return A set containing unique pairs of consecutive strings from the input list.
      */
-    private fun getPairs(word: List<String>): Set<Pair<String, String>> {
-        return mutableSetOf<Pair<String, String>>().apply {
+    private fun getPairs(word: List<String>): Set<Pair<String, String>> =
+        mutableSetOf<Pair<String, String>>().apply {
             for (i in 0 until word.size - 1) {
                 add(word[i] to word[i + 1])
             }
         }
-    }
 }

@@ -14,19 +14,20 @@ import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.navigation.fragment.findNavController
-import com.amias.texttoimagesearch.viewmodels.ORTImageViewModel
 import com.amias.texttoimagesearch.R
-import androidx.core.net.toUri
+import com.amias.texttoimagesearch.viewmodels.ORTImageViewModel
 
-//class IndexFragment : Fragment() {
+// class IndexFragment : Fragment() {
 //    private var progressBarView: ProgressBar? = null
 //    private var progressBarTextView: TextView? = null
 //    private val mORTImageViewModel: ORTImageViewModel by activityViewModels()
@@ -53,7 +54,7 @@ import androidx.core.net.toUri
 //                    permissionsRequest.launch(android.Manifest.permission.READ_EXTERNAL_STORAGE)
 //                }
 //
-////                    openAppPermissionSettings()
+// //                    openAppPermissionSettings()
 //                }
 //                builder.setNegativeButton("Cancel") { dialog, _ ->
 //                    // Handle the Cancel button action
@@ -63,8 +64,8 @@ import androidx.core.net.toUri
 //                // Display the dialog
 //                builder.show()
 //
-////                Toast.makeText(context, "The app requires storage permissions!", Toast.LENGTH_SHORT)
-////                    .show()
+// //                Toast.makeText(context, "The app requires storage permissions!", Toast.LENGTH_SHORT)
+// //                    .show()
 //        }
 //    }
 //
@@ -106,11 +107,13 @@ import androidx.core.net.toUri
 //        }
 //        return view
 //    }
-//}
+// }
 
 class IndexFragment : Fragment() {
     private var progressBarView: ProgressBar? = null
     private var progressBarTextView: TextView? = null
+    private var indexLabelTextView: TextView? = null
+    private var btnSkipToSearchFragment: Button? = null
     private val ortImageViewModel: ORTImageViewModel by activityViewModels()
 
     // Use a constant to better clarity
@@ -121,16 +124,17 @@ class IndexFragment : Fragment() {
     }
 
     // Using RequestMultiplePermissions to request for permissions
-    private val multiplePermissionsRequest: ActivityResultLauncher<Array<String>> = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        val allPermissionsGranted = permissions.all { it.value }
-        if (allPermissionsGranted) {
-            ortImageViewModel.generateIndex()
-        } else {
-            showPermissionRationaleDialog()
+    private val multiplePermissionsRequest: ActivityResultLauncher<Array<String>> =
+        registerForActivityResult(
+            ActivityResultContracts.RequestMultiplePermissions(),
+        ) { permissions ->
+            val allPermissionsGranted = permissions.all { it.value }
+            if (allPermissionsGranted) {
+                ortImageViewModel.generateIndex()
+            } else {
+                showPermissionRationaleDialog()
+            }
         }
-    }
 
     private val requiredPermissions: Array<String> by lazy {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -158,44 +162,60 @@ class IndexFragment : Fragment() {
     }
 
     private fun openAppPermissionSettings() {
-        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-            data = "package:${requireActivity().packageName}".toUri()
-        }
+        val intent =
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = "package:${requireActivity().packageName}".toUri()
+            }
         startActivity(intent)
     }
 
     override fun onCreateView(
-        inflater: LayoutInflater, container: ViewGroup?,
-        savedInstanceState: Bundle?
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?,
     ): View? {
         val view = inflater.inflate(R.layout.fragment_index, container, false)
         requireActivity().window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         progressBarView = view.findViewById(R.id.progressBar)
         progressBarTextView = view.findViewById(R.id.progressBarText)
+        indexLabelTextView = view.findViewById(R.id.indexing_label)
 
         startIndexing()
+
+        btnSkipToSearchFragment = view.findViewById(R.id.btnSkipToSearchFragment)
+        btnSkipToSearchFragment?.setOnClickListener {
+            try {
+                requireActivity().window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                findNavController().navigate(R.id.action_indexFragment_to_searchFragment)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
 
         return view
     }
 
-    private fun startIndexing(){
+    private fun startIndexing() {
         // check for permissions before starting viewmodel
         checkPermissionsAndStartIndexing()
 
         ortImageViewModel.progress.observe(viewLifecycleOwner) { progress ->
             val progressPercent = (progress * 100).toInt()
             progressBarView?.progress = progressPercent
-            progressBarTextView?.text = "Updating image index: ${progressPercent}%" // Use string resource
+            progressBarTextView?.text = "Updating image index: $progressPercent%" // Use string resource
             if (progress == 1.0) {
-                try{
+                try {
                     requireActivity().window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                    findNavController().navigate(R.id.action_indexFragment_to_searchFragment)                }
-                catch (e: Exception){
+                    findNavController().navigate(R.id.action_indexFragment_to_searchFragment)
+                } catch (e: Exception) {
                     e.printStackTrace()
                 }
-
             }
+        }
+
+        ortImageViewModel.progressData.observe(viewLifecycleOwner) { progressData ->
+            indexLabelTextView?.text = "Updating image index: ${progressData.indexed}/${progressData.total}" // Use string resource
         }
     }
 
@@ -209,12 +229,10 @@ class IndexFragment : Fragment() {
     }
 
     // Check if all required permissions are granted
-    private fun allPermissionsGranted(): Boolean {
-        return requiredPermissions.all {
+    private fun allPermissionsGranted(): Boolean =
+        requiredPermissions.all {
             ContextCompat.checkSelfPermission(requireContext(), it) == PackageManager.PERMISSION_GRANTED
         }
-    }
-
 
     override fun onResume() {
         super.onResume()

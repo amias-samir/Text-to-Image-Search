@@ -29,7 +29,7 @@ data class ImageEmbedding(
     @PrimaryKey(autoGenerate = false)
     val id: Long,
     val date: Long,
-    val embedding: FloatArray
+    val embedding: FloatArray,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

@@ -2,7 +2,7 @@
  * Copyright 2023 Viacheslav Barkov
  */
 
-package com.amias.texttoimagesearch
+package com.amias.texttoimagesearch.utils
 
 import kotlin.math.sqrt
 
@@ -38,8 +38,7 @@ import kotlin.math.sqrt
  * }
  * ```
  */
-infix fun FloatArray.dot(other: FloatArray) =
-    foldIndexed(0.0) { i, acc, cur -> acc + cur * other[i] }.toFloat()
+infix fun FloatArray.dot(other: FloatArray) = foldIndexed(0.0) { i, acc, cur -> acc + cur * other[i] }.toFloat()
 
 /**
  * Normalizes a float array using the L2 norm (Euclidean norm).
@@ -74,12 +73,19 @@ infix fun FloatArray.dot(other: FloatArray) =
  * }
  * ```
  */
-fun normalizeL2(inputArray: FloatArray): FloatArray {
-    var norm = 0.0f
-    for (i in inputArray.indices) {
-        norm += inputArray[i] * inputArray[i]
-    }
-    norm = sqrt(norm)
-    return inputArray.map { it / norm }.toFloatArray()
-}
+fun normalizeL2(vector: FloatArray): FloatArray {
+    var squareSum = 0.0
 
+    // Use double precision for accumulation to avoid floating point errors
+    for (value in vector) {
+        squareSum += (value * value).toDouble()
+    }
+
+    // Add small epsilon to prevent division by zero
+    val epsilon = 1e-12
+    val norm = sqrt(squareSum + epsilon)
+
+    return FloatArray(vector.size) { i ->
+        (vector[i] / norm).toFloat()
+    }
+}
